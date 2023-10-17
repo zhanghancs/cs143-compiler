@@ -136,9 +136,31 @@
 
     /* You will want to change the following line. */
     %type <features> dummy_feature_list
+    %type <feature> feature
+
+    %type <formals> formal_list
+    %type <formal> formal
+
+    %type <cases> case_list
+    %type <case_> case
+
+    %type <expressions> expr_list
+    %type <expression> expr
+
+    %type <expression> let_list
+    %type <expressions> expr_blocks
 
     /* Precedence declarations go here. */
 
+    %right ASSIGN
+    %left NOT
+    %left '<'  '='  LE
+    %left '+'  '-'
+    %left '*'  '/'
+    %left ISVOID
+    %left '~'
+    %left '@'
+    %left '.'
 
     %%
     /*
@@ -148,7 +170,7 @@
     ;
 
     class_list
-    : class			/* single class */
+    : class		/* single class */
     { $$ = single_Classes($1);
     parse_results = $$; }
     | class_list class	/* several classes */
@@ -162,11 +184,126 @@
     stringtable.add_string(curr_filename)); }
     | CLASS TYPEID INHERITS TYPEID '{' dummy_feature_list '}' ';'
     { $$ = class_($2,$4,$6,stringtable.add_string(curr_filename)); }
+    | CLASS error ';' class
+    {   $$ = $4;    }
     ;
 
     /* Feature list may be empty, but no empty features in list. */
     dummy_feature_list:		/* empty */
     {  $$ = nil_Features(); }
+    | dummy_feature_list feature
+    {  $$ = append_Features($1,single_Features($2)); }
+    | error ';' dummy_feature_list
+    {   $$ = $3;    }
+    ;
+
+    /* 函数或者属性 */
+    feature: OBJECTID '(' formal_list ')' ':' TYPEID '{' expr '}' ';'
+    {   $$ = method($1,$3,$6,$8);   }
+    ;
+    |   OBJECTID ':' TYPEID ASSIGN expr ';'
+    {   $$ = attr($1, $3, $5);  }
+    ;
+    |   OBJECTID ':' TYPEID ';'
+    {   $$ = attr($1, $3, no_expr());  }
+    ;
+
+    formal_list :
+    {   $$ = nil_Formals(); }
+    | formal_list ',' formal
+    {   $$ = append_Formals($1,single_Formals($3)); }
+    ;
+
+    /* 函数的形参 */
+    formal: TYPEID ':' OBJECTID
+    {   $$ = formal($1, $3);  }
+    ;
+
+    case_list: case
+    {   $$ = single_Cases($1);  }
+    | case_list case
+    {   $$ = append_Cases($1,single_Cases($2));  }
+    ;
+
+    case: OBJECTID ':' TYPEID DARROW expr ';'
+    {   $$ = branch($1, $3, $5);    }
+    ;
+
+    expr_blocks: expr ';'
+    {   $$ = single_Expressions($1); }
+    | expr_blocks expr ';'
+    {   $$ = append_Expressions($1,single_Expressions($2)); }
+    | error ';' expr_blocks
+    {   $$ = $3;    }
+    ;
+
+    let_list: OBJECTID ':' TYPEID IN expr
+    {   $$ = let($1, $3, no_expr(), $5);  }
+    | OBJECTID ':' TYPEID ASSIGN expr IN expr
+    {   $$ = let($1, $3, $5, $7); }
+    | OBJECTID ':' TYPEID ',' let_list
+    {   $$ = let($1, $3, no_expr(), $5);  }
+    | OBJECTID ':' TYPEID ASSIGN expr ',' let_list
+    {   $$ = let($1, $3, $5, $7); }
+    | error ',' let_list
+    {   $$ = $3;    }
+
+
+    expr_list:
+    {   $$ = nil_Expressions(); }
+    | expr_list ',' expr
+    {   $$ = append_Expressions($1,single_Expressions($3)); }
+
+    expr: TYPEID ASSIGN expr
+    {   $$ = assign($1, $3);  }
+    |   expr '@' TYPEID '.' OBJECTID'(' expr_list ')'
+    {   $$ = static_dispatch($1, $3, $5, $7);  }
+    |   expr '.' OBJECTID'(' expr_list ')'
+    {   $$ = dispatch($1, $3, $5);  }
+    |   OBJECTID '(' expr_list ')'
+    { $$ = dispatch(object(idtable.add_string("self")), $1, $3); }
+    |   IF expr THEN expr ELSE expr FI
+    {   $$ = cond($2, $4, $6);    }
+    |   WHILE expr LOOP expr POOL
+    {   $$ = loop($2, $4);  }
+    |   '{' expr_blocks '}'
+    {   $$ = block($2);  }
+    |   LET let_list
+    {   $$ = $2;  }
+    |   CASE expr OF case_list ESAC
+    {   $$ = typcase($2, $4);  }
+    |   NEW TYPEID
+    {   $$ = new_($2);  }
+    |   ISVOID expr
+    {   $$ = isvoid($2);  }
+    |   expr '+' expr
+    {   $$ = plus($1, $3);    }
+    |   expr '-' expr
+    {   $$ = sub($1, $3);    }
+    |   expr '*' expr
+    {   $$ = mul($1, $3);    }
+    |   expr '/' expr
+    {   $$ = divide($1, $3);    }
+    |   '~' expr
+    {   $$ = neg($2);  }
+    |   expr '<' expr
+    {   $$ = lt($1, $3);    }
+    |   expr LE expr
+    {   $$ = leq($1, $3);    }
+    |   expr '=' expr
+    {   $$ = eq($1, $3);    }
+    |   NOT expr
+    {   $$ = comp($2);  }
+    |   '(' expr ')'
+    {   $$ = $2;    }
+    |   OBJECTID
+    {   $$ = object($1);  }
+    |   INT_CONST
+    {   $$ = int_const($1); }
+    |   STR_CONST
+    {   $$ = string_const($1); }
+    |   BOOL_CONST
+    {   $$ = bool_const($1); }
 
 
     /* end of grammar */
